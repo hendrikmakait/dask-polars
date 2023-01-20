@@ -3,6 +3,7 @@ import operator
 from math import ceil
 
 import dask
+import dask.dataframe as dd
 import polars as pl
 from dask.utils import apply, funcname
 
@@ -81,6 +82,17 @@ def from_dataframe(df: pl.DataFrame, npartitions: int = 1) -> DataFrame:
     nrows = len(df)
     chunksize = int(ceil(nrows / npartitions))
     locations = list(range(0, nrows, chunksize)) + [nrows]
-    graph = {(name, i): df[start:stop] for i, (start, stop) in enumerate(zip(locations[:-1], locations[1:]))}
+    graph = {
+        (name, i): df[start:stop]
+        for i, (start, stop) in enumerate(zip(locations[:-1], locations[1:]))
+    }
 
     return DataFrame(name, graph, create_empty_df(df), npartitions)
+
+
+def from_dask_dataframe(df: dd.DataFrame) -> DataFrame:
+    return df.map_partitions(pl.from_pandas)
+
+
+def to_dask_dataframe(df: DataFrame) -> dd.DataFrame:
+    return df.map_partitions(lambda p: p.to_pandas())
