@@ -1,5 +1,6 @@
 import numbers
 import operator
+from math import ceil
 
 import dask
 import polars as pl
@@ -76,8 +77,10 @@ class DataFrame(dask.base.DaskMethodsMixin):
 
 
 def from_dataframe(df: pl.DataFrame, npartitions: int = 1) -> DataFrame:
-    assert npartitions == 1
-    name = "from-dataframe-" + dask.base.tokenize(df)
-    graph = {(name, 0): df}
+    name = "from-dataframe-" + dask.base.tokenize(df, npartitions)
+    nrows = len(df)
+    chunksize = int(ceil(nrows / npartitions))
+    locations = list(range(0, nrows, chunksize)) + [nrows]
+    graph = {(name, i): df[start:stop] for i, (start, stop) in enumerate(zip(locations[:-1], locations[1:]))}
 
     return DataFrame(name, graph, create_empty_df(df), npartitions)

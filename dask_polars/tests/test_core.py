@@ -1,8 +1,8 @@
 import polars as pl
-
+from polars.testing import assert_frame_equal
 import dask_polars as dp
 
-df = pl.DataFrame({"a": [1, 2, 3, 4], "b": [1.0, 2.0, 3.0, 4.0]})
+df = pl.DataFrame({"a": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], "b": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]})
 ddf = dp.from_dataframe(df)
 
 
@@ -21,3 +21,7 @@ def test_sum():
 
 def test_add():
     assert str((ddf + 2).compute()) == str(df + 2)
+
+def test_partitions():
+    ddf = dp.from_dataframe(df, npartitions=3)
+    assert_frame_equal(ddf.compute(), df, check_exact=True)
