@@ -1,5 +1,6 @@
 import numbers
 import operator
+from math import ceil
 
 import dask
 import polars as pl
@@ -75,9 +76,47 @@ class DataFrame(dask.base.DaskMethodsMixin):
         return self.head().compute().__repr__()
 
 
-def from_dataframe(df: pl.DataFrame, npartitions: int = 1) -> DataFrame:
-    assert npartitions == 1
-    name = "from-dataframe-" + dask.base.tokenize(df)
-    graph = {(name, 0): df}
+def from_polars(df: pl.DataFrame, npartitions: int = 1) -> DataFrame:
+    name = "from-polars-" + dask.base.tokenize(df, npartitions)
+    nrows = len(df)
+    chunksize = ceil(nrows / npartitions)
+    locations = [i for i in range(0, nrows, chunksize)] + [nrows]
+    graph = {
+        (name, i): df[start:stop]
+        for i, (start, stop) in enumerate(zip(locations[:-1], locations[1:]))
+    }
 
     return DataFrame(name, graph, create_empty_df(df), npartitions)
+
+
+def from_dask_dataframe(df) -> DataFrame:
+    if df._meta is None:
+        raise ValueError("DataFrame metadata required for determining dtype")
+
+    token = dask.base.tokenize(df)
+    name = f"from-dask-dataframe-{token}"
+    graph = {
+        (name, i): (pl.from_pandas, key) for i, key in enumerate(df.__dask_keys__())
+    }
+    meta = pl.from_pandas(df._meta)
+    return DataFrame(name, {**(df.__dask_graph__()), **graph}, meta, df.npartitions)
+
+
+def to_dask_dataframe(df: DataFrame):
+    from dask.dataframe.core import new_dd_object
+
+    if df._meta is None:
+        raise ValueError("DataFrame metadata required for determining dtype")
+
+    token = dask.base.tokenize(df)
+    name = f"to-dask-dataframe-{token}"
+    graph = {
+        (name, i): (lambda df: df.to_pandas(), key)
+        for i, key in enumerate(df.__dask_keys__())
+    }
+    meta = df._meta.to_pandas()
+    divisions = [None] * (df.npartitions + 1)
+
+    return new_dd_object(
+        {**(df.__dask_graph__()), **graph}, name, meta, divisions=divisions
+    )
